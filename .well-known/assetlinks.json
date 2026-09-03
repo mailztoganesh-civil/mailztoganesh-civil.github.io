@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "io.github.mailztoganesh_civil.twa",
+        "sha256_cert_fingerprints": ["33:2B:CF:F2:2E:A6:E1:A5:B8:1A:E1:7C:C1:39:47:5D:0F:9D:CC:2B:F4:3C:C6:4F:DC:D7:54:E0:30:E1:ED:90"]
+      }
+    }]
