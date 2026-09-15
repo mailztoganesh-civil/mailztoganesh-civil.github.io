@@ -1056,6 +1056,14 @@ function uid(){
 
 function attachDeleteConfirm(btn, onConfirm){
   btn.addEventListener('click', () => {
+    const now = Date.now();
+    const lastClick = Number(btn.dataset.lastClick || 0);
+    btn.dataset.lastClick = String(now);
+
+    // Guard against a single physical tap firing two rapid click events
+    // (can happen when the button's text/size changes mid-tap on some devices)
+    if(now - lastClick < 400) return;
+
     if(btn.dataset.confirming === '1'){
       clearTimeout(btn._confirmTimer);
       onConfirm();
