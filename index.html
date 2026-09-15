@@ -1449,34 +1449,19 @@ function updateProgressExerciseOptions(){
   const select = document.getElementById('progressExercise');
   const currentVal = select.value;
 
-  // map each exercise to the muscle group it's associated with (presets first, then anything custom logged)
-  const exerciseToPart = {};
+  const allExercises = new Set();
   Object.keys(PRESET_EXERCISES).forEach(part => {
-    PRESET_EXERCISES[part].forEach(ex => {
-      if(!(ex in exerciseToPart)) exerciseToPart[ex] = part;
-    });
+    PRESET_EXERCISES[part].forEach(ex => allExercises.add(ex));
   });
   loadEntries().forEach(e => {
-    if(!(e.exercise in exerciseToPart)) exerciseToPart[e.exercise] = e.part;
+    if(e.part !== 'Rest Day') allExercises.add(e.exercise);
   });
 
-  const byPart = {};
-  Object.keys(exerciseToPart).forEach(ex => {
-    const p = exerciseToPart[ex];
-    if(!byPart[p]) byPart[p] = [];
-    byPart[p].push(ex);
-  });
+  const sorted = [...allExercises].sort((a, b) => a.localeCompare(b));
+  const opts = sorted.map(ex => `<option value="${ex.replace(/"/g,'&quot;')}">${ex}</option>`).join('');
 
-  const partOrder = Object.keys(PRESET_EXERCISES);
-  let html = '<option value="">Select an exercise</option>';
-  partOrder.forEach(part => {
-    if(!byPart[part] || byPart[part].length === 0) return;
-    const opts = byPart[part].sort().map(ex => `<option value="${ex.replace(/"/g,'&quot;')}">${ex}</option>`).join('');
-    html += `<optgroup label="${part}">${opts}</optgroup>`;
-  });
-
-  select.innerHTML = html;
-  if(currentVal && exerciseToPart[currentVal] !== undefined) select.value = currentVal;
+  select.innerHTML = '<option value="">Select an exercise</option>' + opts;
+  if(currentVal && allExercises.has(currentVal)) select.value = currentVal;
 }
 
 function estimate1RM(weight,reps){return (!weight||!reps)?0:(reps===1?weight:weight*(1+reps/30));}
