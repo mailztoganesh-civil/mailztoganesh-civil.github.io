@@ -765,7 +765,7 @@
   </div>
 
   <div class="card">
-    <h2 class="section-title">Last 4 weeks</h2>
+    <h2 class="section-title">All history</h2>
     <div id="heatMapWrap"></div>
     <div class="heatmap-legend">
       <span><span class="muscle-dot" style="background:#686e78"></span>Rest</span>
@@ -839,13 +839,6 @@
         <option value="maxWeight">Max weight</option>
         <option value="volume">Training volume</option>
         <option value="estimated1RM">Estimated 1RM</option>
-      </select>
-    </label>
-    <label>Period
-      <select id="progressPeriod">
-        <option value="all">All time</option>
-        <option value="90">Last 90 days</option>
-        <option value="30">Last 30 days</option>
       </select>
     </label>
     </div>
@@ -1182,11 +1175,18 @@ function renderHeatMap(){
   });
 
   const days = [];
-  for(let i = 27; i >= 0; i--) days.push(dateStrDaysAgo(i));
+  let span = 27;
+  entries.forEach(e => {
+    const n = Math.round((new Date(dateStrDaysAgo(0) + 'T00:00:00') - new Date(e.date + 'T00:00:00')) / 86400000);
+    if(n > span) span = n;
+  });
+  for(let i = span; i >= 0; i--) days.push(dateStrDaysAgo(i));
+  const padStart = new Date(days[0] + 'T00:00:00').getDay();
 
   const dayLabels = ['S','M','T','W','T','F','S'];
   const labelsHtml = dayLabels.map(l => `<div class="heatmap-day-label">${l}</div>`).join('');
 
+  const padHtml = '<div></div>'.repeat(padStart);
   const cellsHtml = days.map(ds => {
     const dayEntries = byDate[ds] || [];
     const dt = new Date(ds + 'T00:00:00');
@@ -1207,7 +1207,8 @@ function renderHeatMap(){
     return `<div class="heatmap-cell${empty ? ' empty-day' : ''}" style="background:${bg}" title="${title}" data-date="${ds}"><span class="day-num">${dayNum}</span></div>`;
   }).join('');
 
-  wrap.innerHTML = `<div class="heatmap-grid">${labelsHtml}${cellsHtml}</div>`;
+  wrap.innerHTML = `<div class="heatmap-grid">${labelsHtml}${padHtml}${cellsHtml}</div>`;
+  wrap.style.maxHeight = '340px'; wrap.style.overflowY = 'auto'; wrap.scrollTop = wrap.scrollHeight;
 
   wrap.querySelectorAll('.heatmap-cell').forEach(cell => {
     cell.addEventListener('click', () => {
@@ -1574,14 +1575,13 @@ function showGoalInput(exercise, currentGoal){
 }
 
 function renderProgressChart(){
-  const exercise=document.getElementById('progressExercise').value, metric=document.getElementById('progressMetric').value, period=document.getElementById('progressPeriod').value;
+  const exercise=document.getElementById('progressExercise').value, metric=document.getElementById('progressMetric').value;
   const wrap=document.getElementById('progressChartWrap'), kpis=document.getElementById('progressKpis'), insights=document.getElementById('progressInsights'), recent=document.getElementById('progressRecent'), title=document.getElementById('progressHeroTitle'), sub=document.getElementById('progressHeroSub'), badge=document.getElementById('progressTrendBadge');
   if(!exercise){title.textContent='Progress at a glance';sub.textContent='Choose an exercise to unlock your performance analytics.';badge.textContent='—';badge.className='trend-badge';kpis.innerHTML=insights.innerHTML=recent.innerHTML='';wrap.innerHTML='<div class="empty">Select an exercise to see your progress.</div>';renderGoalSection('');return;}
   renderGoalSection(exercise);
   let entries=loadEntries().filter(e=>e.exercise===exercise);
-  if(period!=='all'){const cut=new Date();cut.setHours(0,0,0,0);cut.setDate(cut.getDate()-Number(period));entries=entries.filter(e=>new Date(e.date+'T00:00:00')>=cut);}
   entries.sort((a,b)=>a.date.localeCompare(b.date));
-  if(!entries.length){title.textContent=exercise;sub.textContent='No data in the selected period.';badge.textContent='No data';badge.className='trend-badge';kpis.innerHTML=insights.innerHTML=recent.innerHTML='';wrap.innerHTML=`<div class="empty">No logged sets for ${exercise} in this period.</div>`;return;}
+  if(!entries.length){title.textContent=exercise;sub.textContent='No data yet.';badge.textContent='No data';badge.className='trend-badge';kpis.innerHTML=insights.innerHTML=recent.innerHTML='';wrap.innerHTML=`<div class="empty">No logged sets for ${exercise} yet.</div>`;return;}
   const byDate={};entries.forEach(e=>{if(!byDate[e.date])byDate[e.date]=[];byDate[e.date].push(e);});const dates=Object.keys(byDate).sort();
   const points=dates.map(date=>{const a=byDate[date];let value;if(metric==='maxWeight')value=Math.max(...a.map(i=>+i.weight||0));else if(metric==='volume')value=a.reduce((s,i)=>s+entryVolume(i),0);else value=Math.max(...a.map(i=>estimate1RM(+i.weight||0,+i.reps||0)));return{date,value};});
   const first=points[0].value,last=points[points.length-1].value,pct=first?(last-first)/first*100:0,totalVolume=entries.reduce((s,i)=>s+entryVolume(i),0),avgReps=entries.reduce((s,i)=>s+(+i.reps||0),0)/entries.length,sessionCount=dates.length;
@@ -1613,8 +1613,7 @@ function renderProgressChart(){
 }
 document.getElementById('progressExercise').addEventListener('change', renderProgressChart);
 document.getElementById('progressMetric').addEventListener('change', renderProgressChart);
-document.getElementById('progressPeriod').addEventListener('change', renderProgressChart);
-document.getElementById('progressResetBtn').addEventListener('click',()=>{document.getElementById('progressPeriod').value='all';document.getElementById('progressMetric').value='maxWeight';renderProgressChart();});
+document.getElementById('progressResetBtn').addEventListener('click',()=>{document.getElementById('progressMetric').value='maxWeight';renderProgressChart();});
 
 document.getElementById('viewByMuscleBtn').addEventListener('click', () => {
   historyViewMode = 'muscle';
