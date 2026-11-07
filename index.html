@@ -877,6 +877,17 @@
     <p class="overall-sub">Pick a background tint for the app.</p>
     <div id="bgSwatches" class="bg-swatch-row"></div>
   </div>
+
+  <div class="card">
+    <h2 class="section-title">Backup &amp; restore</h2>
+    <p class="overall-sub">Copy your data as text and keep it safe (WhatsApp / Notes). Paste it back here to restore or move to another phone.</p>
+    <div class="view-toggle">
+      <button type="button" id="backupExportBtn" class="toggle-btn active">Copy backup</button>
+      <button type="button" id="backupImportBtn" class="toggle-btn">Restore</button>
+    </div>
+    <textarea id="backupText" rows="6" placeholder="Backup text appears here. To restore, paste it here and tap Restore." style="width:100%;margin-top:10px;border-radius:8px;padding:8px;font-size:0.8rem;box-sizing:border-box;background:var(--card-2,transparent);color:var(--text);border:1px solid var(--border)"></textarea>
+    <p id="backupMsg" class="overall-sub" style="margin-top:8px"></p>
+  </div>
 </div>
 
 <script>
@@ -1005,6 +1016,26 @@ function renderBgSwatches(){
     });
   });
 }
+
+(function(){
+  const ta=()=>document.getElementById('backupText'), msg=t=>{document.getElementById('backupMsg').textContent=t;};
+  document.getElementById('backupExportBtn').addEventListener('click',()=>{
+    const data={app:'GRWorkoutLog',v:1,entries:loadEntries(),goals:JSON.parse(localStorage.getItem('gr_workout_goals_v1')||'{}')};
+    const txt=JSON.stringify(data);
+    ta().value=txt; ta().focus(); ta().select();
+    let ok=false; try{ ok=document.execCommand('copy'); }catch(e){}
+    msg(data.entries.length+' entries in backup.'+(ok?' Copied - paste it somewhere safe.':' Select the text and copy it.'));
+  });
+  document.getElementById('backupImportBtn').addEventListener('click',()=>{
+    let d; try{ d=JSON.parse(ta().value.trim()); }catch(e){ msg('That is not a valid backup text.'); return; }
+    const inc=Array.isArray(d)?d:(d&&d.entries); if(!Array.isArray(inc)){ msg('No entries found in that text.'); return; }
+    const cur=loadEntries(), ids=new Set(cur.map(e=>e.id)); let added=0;
+    inc.forEach(e=>{ if(e&&e.date&&e.exercise&&!ids.has(e.id)){ cur.push(e); ids.add(e.id); added++; } });
+    saveEntries(cur);
+    if(d&&d.goals&&typeof d.goals==='object'){ try{ const g=Object.assign({},d.goals,JSON.parse(localStorage.getItem('gr_workout_goals_v1')||'{}')); localStorage.setItem('gr_workout_goals_v1',JSON.stringify(g)); }catch(e){} }
+    msg('Restored '+added+' entries. Reloading...'); setTimeout(()=>location.reload(),900);
+  });
+})();
 
 document.getElementById('openSettingsBtn').addEventListener('click', () => {
   document.getElementById('mainView').style.display = 'none';
