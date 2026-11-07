@@ -765,7 +765,11 @@
   </div>
 
   <div class="card">
-    <h2 class="section-title">All history</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <button type="button" id="heatPrev" aria-label="Previous month" style="border:1px solid var(--border,#d5d9e0);background:transparent;color:var(--text);border-radius:8px;width:44px;height:36px;font-size:1.1rem;cursor:pointer">&#9664;</button>
+      <h2 class="section-title" id="heatMonthTitle" style="margin:0;cursor:pointer" title="Tap for this month">Month</h2>
+      <button type="button" id="heatNext" aria-label="Next month" style="border:1px solid var(--border,#d5d9e0);background:transparent;color:var(--text);border-radius:8px;width:44px;height:36px;font-size:1.1rem;cursor:pointer">&#9654;</button>
+    </div>
     <div id="heatMapWrap"></div>
     <div class="heatmap-legend">
       <span><span class="muscle-dot" style="background:#686e78"></span>Rest</span>
@@ -1098,11 +1102,14 @@ function isPR(item, allEntries){
   return item.weight > 0 && item.weight === maxForExercise;
 }
 
+function localDateStr(d){
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
 function dateStrDaysAgo(n){
   const d = new Date();
   d.setHours(0,0,0,0);
   d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0,10);
+  return localDateStr(d);
 }
 
 const SPLIT_GROUPS = ['Chest & Triceps','Back & Biceps','Legs','Shoulders & Forearms','Treadmill / Cardio'];
@@ -1163,6 +1170,7 @@ function populateHistoryDateOptions(){
   if(dates.includes(current)) select.value = current;
 }
 
+let heatMonth = null;
 function renderHeatMap(){
   const wrap = document.getElementById('heatMapWrap');
   if(!wrap) return;
@@ -1174,14 +1182,17 @@ function renderHeatMap(){
     byDate[e.date].push(e);
   });
 
+  const now = new Date();
+  if(!heatMonth) heatMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const y = heatMonth.getFullYear(), m = heatMonth.getMonth();
+  const dim = new Date(y, m + 1, 0).getDate();
   const days = [];
-  let span = 27;
-  entries.forEach(e => {
-    const n = Math.round((new Date(dateStrDaysAgo(0) + 'T00:00:00') - new Date(e.date + 'T00:00:00')) / 86400000);
-    if(n > span) span = n;
-  });
-  for(let i = span; i >= 0; i--) days.push(dateStrDaysAgo(i));
-  const padStart = new Date(days[0] + 'T00:00:00').getDay();
+  for(let d = 1; d <= dim; d++) days.push(localDateStr(new Date(y, m, d)));
+  const padStart = new Date(y, m, 1).getDay();
+  const isCurrent = (y === now.getFullYear() && m === now.getMonth());
+  document.getElementById('heatMonthTitle').textContent = heatMonth.toLocaleDateString('en-US', {month:'long', year:'numeric'});
+  const nextBtn = document.getElementById('heatNext');
+  nextBtn.disabled = isCurrent; nextBtn.style.opacity = isCurrent ? '0.35' : '1';
 
   const dayLabels = ['S','M','T','W','T','F','S'];
   const labelsHtml = dayLabels.map(l => `<div class="heatmap-day-label">${l}</div>`).join('');
@@ -1208,7 +1219,6 @@ function renderHeatMap(){
   }).join('');
 
   wrap.innerHTML = `<div class="heatmap-grid">${labelsHtml}${padHtml}${cellsHtml}</div>`;
-  wrap.style.maxHeight = '340px'; wrap.style.overflowY = 'auto'; wrap.scrollTop = wrap.scrollHeight;
 
   wrap.querySelectorAll('.heatmap-cell').forEach(cell => {
     cell.addEventListener('click', () => {
@@ -1613,6 +1623,9 @@ function renderProgressChart(){
 }
 document.getElementById('progressExercise').addEventListener('change', renderProgressChart);
 document.getElementById('progressMetric').addEventListener('change', renderProgressChart);
+document.getElementById('heatPrev').addEventListener('click',()=>{if(!heatMonth){const t=new Date();heatMonth=new Date(t.getFullYear(),t.getMonth(),1);}heatMonth=new Date(heatMonth.getFullYear(),heatMonth.getMonth()-1,1);renderHeatMap();});
+document.getElementById('heatNext').addEventListener('click',()=>{if(!heatMonth)return;const n=new Date(heatMonth.getFullYear(),heatMonth.getMonth()+1,1);if(n<=new Date()){heatMonth=n;renderHeatMap();}});
+document.getElementById('heatMonthTitle').addEventListener('click',()=>{heatMonth=null;renderHeatMap();});
 document.getElementById('progressResetBtn').addEventListener('click',()=>{document.getElementById('progressMetric').value='maxWeight';renderProgressChart();});
 
 document.getElementById('viewByMuscleBtn').addEventListener('click', () => {
@@ -1740,7 +1753,7 @@ document.getElementById('importFile').addEventListener('change', (e) => {
   reader.readAsText(file);
 });
 
-document.getElementById('date').value = new Date().toISOString().slice(0,10);
+document.getElementById('date').value = localDateStr(new Date());
 
 render();
 renderWeeklySummary();
