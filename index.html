@@ -888,6 +888,19 @@
     <textarea id="backupText" rows="6" placeholder="Backup text appears here. To restore, paste it here and tap Restore." style="width:100%;margin-top:10px;border-radius:8px;padding:8px;font-size:0.8rem;box-sizing:border-box;background:var(--card-2,transparent);color:var(--text);border:1px solid var(--border)"></textarea>
     <p id="backupMsg" class="overall-sub" style="margin-top:8px"></p>
   </div>
+
+  <div class="card">
+    <h2 class="section-title">GitHub auto-save</h2>
+    <p class="overall-sub">Saves your log to a private GitHub repo after every change, and restores it on a new phone or after a reinstall.</p>
+    <input id="ghRepo" type="text" placeholder="Repo, e.g. mailztoganesh-civil/workout-data" autocapitalize="off" autocomplete="off" style="width:100%;box-sizing:border-box;margin-top:8px;padding:10px;border-radius:8px;font-size:0.85rem;background:transparent;color:var(--text);border:1px solid var(--border)">
+    <input id="ghToken" type="password" placeholder="GitHub token (github_pat_...)" autocomplete="off" style="width:100%;box-sizing:border-box;margin-top:8px;padding:10px;border-radius:8px;font-size:0.85rem;background:transparent;color:var(--text);border:1px solid var(--border)">
+    <div class="view-toggle" style="margin-top:10px">
+      <button type="button" id="ghConnectBtn" class="toggle-btn active">Connect &amp; sync</button>
+      <button type="button" id="ghSyncBtn" class="toggle-btn">Sync now</button>
+      <button type="button" id="ghOffBtn" class="toggle-btn">Disconnect</button>
+    </div>
+    <p id="ghStatus" class="overall-sub" style="margin-top:8px">Not connected.</p>
+  </div>
 </div>
 
 <script>
@@ -962,6 +975,7 @@ function saveEntries(entries){
   }
   try{
     localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+    if(window.__onSave) window.__onSave();
   }catch(e){
     storageWorks = false;
     memoryFallback = entries;
@@ -1035,6 +1049,75 @@ function renderBgSwatches(){
     if(d&&d.goals&&typeof d.goals==='object'){ try{ const g=Object.assign({},d.goals,JSON.parse(localStorage.getItem('gr_workout_goals_v1')||'{}')); localStorage.setItem('gr_workout_goals_v1',JSON.stringify(g)); }catch(e){} }
     msg('Restored '+added+' entries. Reloading...'); setTimeout(()=>location.reload(),900);
   });
+})();
+
+(function(){
+  const KEY='gr_github_sync_v1', GK='gr_workout_goals_v1';
+  const cfg=()=>{try{return JSON.parse(localStorage.getItem(KEY)||'null');}catch(e){return null;}};
+  const b64=s=>btoa(unescape(encodeURIComponent(s)));
+  const unb64=s=>decodeURIComponent(escape(atob(s.replace(/\s/g,''))));
+  const status=t=>{const el=document.getElementById('ghStatus'); if(el) el.textContent=t;};
+  const goals=()=>{try{return JSON.parse(localStorage.getItem(GK)||'{}');}catch(e){return {};}};
+  let sha=null, busy=false, again=null, quiet=false, timer=null;
+  function api(method, body){
+    const c=cfg();
+    return fetch('https://api.github.com/repos/'+c.repo+'/contents/data.json',{method:method,cache:'no-store',
+      headers:{Authorization:'Bearer '+c.token,Accept:'application/vnd.github+json'},
+      body:body?JSON.stringify(body):undefined});
+  }
+  async function pull(){
+    const r=await api('GET');
+    if(r.status===404){ sha=null; return null; }
+    if(r.status===401||r.status===403) throw new Error('token not accepted ('+r.status+')');
+    if(!r.ok) throw new Error('GitHub error '+r.status);
+    const j=await r.json(); sha=j.sha;
+    return JSON.parse(unb64(j.content));
+  }
+  async function push(){
+    if(sha===null){ try{ await pull(); }catch(e){ if(!/404/.test(e.message)) throw e; } }
+    const data={app:'GRWorkoutLog',v:1,saved:new Date().toISOString(),entries:loadEntries(),goals:goals()};
+    const body={message:'sync '+data.saved,content:b64(JSON.stringify(data))};
+    if(sha) body.sha=sha;
+    let r=await api('PUT',body);
+    if(r.status===409||r.status===422){ await pull(); if(sha) body.sha=sha; else delete body.sha; r=await api('PUT',body); }
+    if(r.status===404) throw new Error('repo not found - check name and token access');
+    if(r.status===401||r.status===403) throw new Error('token needs Contents: Read and write');
+    if(!r.ok) throw new Error('GitHub error '+r.status);
+    const j=await r.json(); sha=j.content.sha; return data.entries.length;
+  }
+  async function run(mode){
+    if(!cfg()) return;
+    if(busy){ again=(again==='full'||mode==='full')?'full':'push'; return; }
+    busy=true; let added=0;
+    try{
+      status('Syncing...');
+      if(mode==='full'){
+        const remote=await pull();
+        if(remote){
+          const cur=loadEntries(), ids=new Set(cur.map(e=>e.id));
+          (remote.entries||[]).forEach(e=>{ if(e&&e.date&&e.exercise&&!ids.has(e.id)){ cur.push(e); ids.add(e.id); added++; } });
+          if(added){ quiet=true; saveEntries(cur); quiet=false; }
+          if(remote.goals){ localStorage.setItem(GK, JSON.stringify(Object.assign({},remote.goals,goals()))); }
+        }
+      }
+      const n=await push();
+      status('Synced at '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})+' - '+n+' entries saved to GitHub.');
+      if(added){ status('Restored '+added+' entries from GitHub. Reloading...'); setTimeout(()=>location.reload(),900); }
+    }catch(e){ quiet=false; status('Sync failed: '+e.message); }
+    finally{ busy=false; if(again){ const m=again; again=null; run(m); } }
+  }
+  window.__onSave=function(){ if(quiet||!cfg()) return; clearTimeout(timer); timer=setTimeout(()=>run('push'),1500); };
+  document.getElementById('ghConnectBtn').addEventListener('click',()=>{
+    const repo=document.getElementById('ghRepo').value.trim().replace(/^https?:\/\/github.com\//,'').replace(/\/$/,''), token=document.getElementById('ghToken').value.trim();
+    if(!/^[\w.-]+\/[\w.-]+$/.test(repo)){ status('Enter the repo as owner/name.'); return; }
+    if(!token){ status('Paste your GitHub token.'); return; }
+    localStorage.setItem(KEY, JSON.stringify({repo:repo,token:token}));
+    document.getElementById('ghToken').value=''; sha=null; run('full');
+  });
+  document.getElementById('ghSyncBtn').addEventListener('click',()=>{ if(!cfg()){status('Not connected.');return;} run('full'); });
+  document.getElementById('ghOffBtn').addEventListener('click',()=>{ localStorage.removeItem(KEY); status('Disconnected. Your data stays on this phone.'); });
+  const c=cfg();
+  if(c){ document.getElementById('ghRepo').value=c.repo; status('Connected to '+c.repo+'.'); setTimeout(()=>run('full'),1200); }
 })();
 
 document.getElementById('openSettingsBtn').addEventListener('click', () => {
@@ -1547,7 +1630,7 @@ function loadGoals(){
   catch(e){ return {}; }
 }
 function saveGoals(goals){
-  try{ localStorage.setItem('gr_workout_goals_v1', JSON.stringify(goals)); }
+  try{ localStorage.setItem('gr_workout_goals_v1', JSON.stringify(goals)); if(window.__onSave) window.__onSave(); }
   catch(e){}
 }
 
